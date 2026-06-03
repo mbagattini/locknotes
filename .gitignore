@@ -23,3 +23,6 @@ packages/
 
 ## Claude settings
 *.local.json
+
+## GitHub / Copilot
+.github/
