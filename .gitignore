@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+*.suo
+*.userprefs
+*.userosscache
+*.sln.docstates
+
+## Publish output
+publish/
+
+## Runtime artifacts
+errors.log
+locknotes.settings.json
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+## Claude settings
+*.local.json

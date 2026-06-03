@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>LockNotes</RootNamespace>
+    <Nullable>enable</Nullable>
+    <UseWinUI>true</UseWinUI>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x86;x64;arm64</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSdkSelfContained>true</WindowsAppSdkSelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\locknotes.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- versione: 1.<yy><DDD>.<HHmm>  — generata automaticamente ad ogni build -->
+  <PropertyGroup>
+    <InformationalVersion>1.$([System.DateTime]::Now.ToString("yy"))$([System.DateTime]::Now.DayOfYear.ToString("D3")).$([System.DateTime]::Now.ToString("HHmm"))</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- dotnet publish -c Release -r win-x64  →  EXE singolo + DLL native WAS -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <SatelliteResourceLanguages>en;it</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\locknotes.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Rimuove le ~80 cartelle di lingua WinUI 3 superflue (lascia en-us e it-it) -->
+  <Target Name="RemoveExtraWinUILanguages" AfterTargets="Publish">
+    <ItemGroup>
+      <_WinUILangDirs Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)Microsoft.UI.Xaml'))" Condition="Exists('$(PublishDir)Microsoft.UI.Xaml')" />
+      <_WinUILangDirsToRemove Include="@(_WinUILangDirs)" Exclude="$(PublishDir)Microsoft.UI.Xaml\en-us;$(PublishDir)Microsoft.UI.Xaml\it-it" />
+    </ItemGroup>
+    <RemoveDir Directories="@(_WinUILangDirsToRemove)" />
+  </Target>
+
+</Project>
