@@ -52,6 +52,13 @@ public partial class App : Application
         _trayIcon = null;
     }
 
+    // Invocato quando una seconda istanza prova a partire: ripristina la finestra
+    // esistente (sia nascosta in tray sia minimizzata).
+    internal void OnRedirectedActivation()
+    {
+        _mainWindow?.DispatcherQueue.TryEnqueue(() => _mainWindow.ShowFromTray());
+    }
+
     static bool IsStartupEnabled()
     {
         try

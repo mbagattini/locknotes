@@ -55,7 +55,6 @@ public sealed partial class MainWindow : Window
 
         LoadWindowSettings();
         AppWindow.Closing += OnWindowClosing;
-        AppWindow.Changed += OnAppWindowChanged;
         ((FrameworkElement)Content).Loaded += OnContentLoaded;
     }
 
@@ -396,6 +395,20 @@ public sealed partial class MainWindow : Window
     {
         _fontSize = Math.Clamp(size, 10, 32);
         txtContent.FontSize = _fontSize;
+        // Tabulazione pari a 4 caratteri: il font e monospace, quindi 4 x larghezza di un carattere.
+        txtContent.Document.DefaultTabStop = (float)(MeasureCharWidth() * 4);
+    }
+
+    double MeasureCharWidth()
+    {
+        var probe = new TextBlock
+        {
+            FontFamily = txtContent.FontFamily,
+            FontSize = _fontSize,
+            Text = "0"
+        };
+        probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return probe.DesiredSize.Width;
     }
 
     async Task ShowAboutDialogAsync()
@@ -408,12 +421,6 @@ public sealed partial class MainWindow : Window
         await ShowInfoDialogAsync(
             $"Lock Notes  v{ver}\n\nGestore di file di testo cifrati.\n\n© 2026 Matteo Bagattini",
             "Informazioni");
-    }
-
-    void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
-    {
-        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized })
-            AppWindow.Hide();
     }
 
     internal void ShowFromTray()
@@ -438,20 +445,13 @@ public sealed partial class MainWindow : Window
         ExecuteClose();
     }
 
-    async void OnWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    void OnWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        // Il tasto di chiusura non termina l'app: la nasconde nella tray.
+        // L'uscita effettiva avviene da menu File > Esci o dalla tray.
         if (_allowClose) return;
         args.Cancel = true;
-
-        if (_dirty)
-        {
-            bool? answer = await ShowYesNoCancelDialogAsync(
-                "Ci sono modifiche non salvate. Salvare prima di chiudere?", AppTitle);
-            if (answer == null) return;
-            if (answer == true) Save();
-        }
-
-        ExecuteClose();
+        AppWindow.Hide();
     }
 
     void ExecuteClose()

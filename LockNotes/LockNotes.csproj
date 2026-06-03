@@ -15,6 +15,8 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\locknotes.ico</ApplicationIcon>
+    <!-- Main personalizzato in Program.cs per gestire la singola istanza -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <!-- versione: 1.<yy><DDD>.<HHmm>  — generata automaticamente ad ogni build -->
