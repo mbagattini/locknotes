@@ -21,10 +21,16 @@ sealed class DocumentTab
 
     public string? FilePath { get; set; } // null per i documenti nuovi mai salvati ("Senza titolo")
     public string? Password { get; set; }
+    public string? RecoveryCode { get; set; } // null per i "Senza titolo" fino al primo salvataggio
     public string DisplayName => FilePath == null ? "Senza titolo" : Path.GetFileName(FilePath);
     public bool Dirty { get; private set; }
     public bool IsUnlocked { get; private set; }
     public bool Unlocking { get; set; } // guard contro doppi prompt password
+
+    // Ultimo stato noto del file su disco, per rilevare i salvataggi di altri utenti
+    public DateTime LastWriteTimeUtc { get; set; }
+    public long LastFileLength { get; set; }
+    public int ReloadFailures { get; set; } // decifrature fallite consecutive durante il reload automatico
 
     public TabViewItem Item { get; }
     public RichEditBox Editor { get; }
@@ -75,6 +81,32 @@ sealed class DocumentTab
         IsUnlocked = true;
         _lockedPlaceholder.Visibility = Visibility.Collapsed;
         Editor.Visibility = Visibility.Visible;
+        UpdateHeader();
+    }
+
+    // Aggiorna lo stato noto del file leggendolo dal disco (da chiamare prima della
+    // lettura e dopo la scrittura, cosi' il proprio salvataggio non appare come esterno)
+    public void RefreshFileStamp()
+    {
+        if (FilePath == null) return;
+        try
+        {
+            var info = new FileInfo(FilePath);
+            LastWriteTimeUtc = info.LastWriteTimeUtc;
+            LastFileLength = info.Length;
+        }
+        catch { } // errore I/O: lo stamp resta quello precedente
+    }
+
+    // Torna allo stato bloccato (es. password cambiata da un altro utente)
+    public void Relock()
+    {
+        SetContent(string.Empty); // svuota anche l'editor: il testo in chiaro non deve restare
+        Password = null;
+        RecoveryCode = null;
+        IsUnlocked = false;
+        Editor.Visibility = Visibility.Collapsed;
+        _lockedPlaceholder.Visibility = Visibility.Visible;
         UpdateHeader();
     }
 

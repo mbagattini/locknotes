@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -63,6 +64,7 @@
                 <MenuFlyoutItem Text="Chiudi tab" KeyboardAcceleratorTextOverride="Ctrl+W" Click="OnMenuCloseTab"/>
                 <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Cambia Password..." KeyboardAcceleratorTextOverride="Ctrl+P" Click="OnMenuChangePassword"/>
+                <MenuFlyoutItem Text="Codice di recupero..." Click="OnMenuRecoveryCode"/>
                 <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Esci" Click="OnMenuExit"/>
             </MenuBarItem>
@@ -75,12 +77,18 @@
             </MenuBarItem>
         </MenuBar>
 
+        <!-- Avvisi non bloccanti (es. file ricaricato perche' modificato da un altro utente) -->
+        <InfoBar Grid.Row="2"
+                 x:Name="NoticeBar"
+                 Severity="Informational"
+                 IsOpen="False"/>
+
         <!-- Editor dei tab: un Grid (editor + placeholder) per file, creato in
              code-behind (DocumentTab); e' visibile solo quello del tab attivo -->
-        <Grid Grid.Row="2" x:Name="EditorHost" Background="#232831"/>
+        <Grid Grid.Row="3" x:Name="EditorHost" Background="#232831"/>
 
         <!-- Status bar -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Background="#2E3440"
                 BorderBrush="#4C566A"
                 BorderThickness="0,1,0,0"

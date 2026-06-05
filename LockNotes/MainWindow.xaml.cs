@@ -1,4 +1,5 @@
 using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -22,6 +23,9 @@ public sealed partial class MainWindow : Window
     readonly string? _cliPath;
     bool _allowClose;
     bool _suppressAutoUnlock; // evita prompt password durante mutazioni programmatiche dei tab
+    DispatcherQueueTimer? _fileCheckTimer; // polling modifiche esterne (FileSystemWatcher inaffidabile su SMB/VPN)
+    bool _checkingFiles;                   // guard contro tick sovrapposti
+    DispatcherQueueTimer? _noticeTimer;    // auto-chiusura della InfoBar
     int _fontSize = 15;
     List<string> _restoreFiles = new();
     int _restoreActiveIndex;
@@ -52,6 +56,7 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.ButtonForegroundColor = Microsoft.UI.Colors.White;
 
         LoadWindowSettings();
+        StartFileCheckTimer();
         AppWindow.Closing += OnWindowClosing;
         ((FrameworkElement)Content).Loaded += OnContentLoaded;
     }
@@ -188,14 +193,25 @@ public sealed partial class MainWindow : Window
         {
             for (int attempt = 1; attempt <= MaxAttempts; attempt++)
             {
-                string? pwd = await ShowPasswordDialogAsync($"Password per '{tab.DisplayName}':");
+                (string? pwd, bool recovery) = await ShowPasswordDialogCoreAsync(
+                    $"Password per '{tab.DisplayName}':", offerRecovery: true);
+
+                if (recovery)
+                {
+                    if (await RecoverTabAsync(tab)) return true;
+                    attempt--; // recupero annullato o fallito: non consuma i tentativi password
+                    continue;
+                }
+
                 if (pwd == null) return false; // annullato: il tab resta bloccato e riprovabile
 
                 try
                 {
+                    tab.RefreshFileStamp(); // stato PRIMA della lettura: scritture successive verranno colte dal poll
                     byte[] data = File.ReadAllBytes(tab.FilePath);
-                    string plainText = CryptoService.Decrypt(data, pwd);
+                    (string plainText, string recoveryCode) = CryptoService.Decrypt(data, pwd);
                     tab.MarkUnlocked(pwd);
+                    tab.RecoveryCode = recoveryCode;
                     tab.SetContent(plainText);
                     UpdateTitle();
                     UpdateStatus();
@@ -223,11 +239,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    async Task<string?> AskNewPasswordAsync()
+    async Task<string?> AskNewPasswordAsync(string prompt = "Inserisci la password per il nuovo file:")
     {
         while (true)
         {
-            string? pwd1 = await ShowPasswordDialogAsync("Inserisci la password per il nuovo file:");
+            string? pwd1 = await ShowPasswordDialogAsync(prompt);
             if (pwd1 == null) return null;
 
             string? pwd2 = await ShowPasswordDialogAsync("Conferma la password:");
@@ -244,11 +260,315 @@ public sealed partial class MainWindow : Window
         // Solo per file gia' salvati: per i "Senza titolo" la password si sceglie al salvataggio
         if (ActiveTab is not { IsUnlocked: true, FilePath: not null } tab) return;
 
-        string? pwd = await AskNewPasswordAsync();
+        string? pwd = await AskNewPasswordAsync("Inserisci la nuova password:");
         if (pwd == null) return;
         tab.Password = pwd;
+        tab.RecoveryCode = CryptoService.GenerateRecoveryCode(); // il vecchio codice decade col salvataggio
         tab.SetDirty(true);
-        await ShowInfoDialogAsync("Password aggiornata. Salva per applicare la modifica.", AppTitle);
+        await ShowInfoDialogAsync(
+            "Password aggiornata e nuovo codice di recupero generato " +
+            "(visualizzalo da File > Codice di recupero). Salva per applicare le modifiche.", AppTitle);
+    }
+
+    // ---- Sblocco d'emergenza ----
+
+    // Codice di recupero -> password -> nuova password obbligatoria, nuovo codice, salvataggio immediato
+    async Task<bool> RecoverTabAsync(DocumentTab tab)
+    {
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            string? code = await ShowRecoveryInputDialogAsync(tab.DisplayName);
+            if (code == null) return false;
+
+            string text;
+            try
+            {
+                tab.RefreshFileStamp(); // come in UnlockTabAsync: stato PRIMA della lettura
+                byte[] data = File.ReadAllBytes(tab.FilePath!);
+                (text, _) = CryptoService.DecryptWithRecoveryCode(data, code);
+            }
+            catch (CryptographicException)
+            {
+                string msg = attempt < MaxAttempts
+                    ? $"Codice di recupero errato. Tentativi rimanenti: {MaxAttempts - attempt}."
+                    : "Codice di recupero errato. Numero massimo di tentativi raggiunto.";
+                await ShowInfoDialogAsync(msg, "Avviso");
+                continue;
+            }
+            catch (Exception ex)
+            {
+                await ShowInfoDialogAsync($"Errore durante l'apertura:\n{ex.Message}", AppTitle);
+                return false;
+            }
+
+            // La vecchia password resta sconosciuta: senza una nuova il recupero viene annullato
+            string? newPwd = await AskNewPasswordAsync("Codice corretto. Imposta una nuova password per il file:");
+            if (newPwd == null)
+            {
+                await ShowInfoDialogAsync("Recupero annullato: senza una nuova password il file resta bloccato.", AppTitle);
+                return false;
+            }
+
+            tab.MarkUnlocked(newPwd);
+            tab.RecoveryCode = CryptoService.GenerateRecoveryCode();
+            tab.SetContent(text);
+            UpdateTitle();
+            UpdateStatus();
+            FocusEditor(tab);
+
+            if (await SaveAsync(tab))
+                await ShowRecoveryCodeDialogAsync(tab); // mostra subito il nuovo codice
+            else
+                tab.SetDirty(true); // salvataggio fallito: nuova password e codice validi solo dopo un save manuale
+
+            return true;
+        }
+        return false;
+    }
+
+    async Task<string?> ShowRecoveryInputDialogAsync(string displayName)
+    {
+        await _dialogGate.WaitAsync();
+        try
+        {
+            var codeBox = new TextBox
+            {
+                PlaceholderText = "XXXX-XXXX-XXXX-XXXX-XXXX-XXXX",
+                FontFamily = new FontFamily("Cascadia Code")
+            };
+            var content = new StackPanel { Spacing = 8 };
+            content.Children.Add(new TextBlock
+            {
+                Text = $"Inserisci il codice di recupero per '{displayName}':",
+                TextWrapping = TextWrapping.Wrap
+            });
+            content.Children.Add(codeBox);
+
+            var dialog = new ContentDialog
+            {
+                Title = "Sblocco d'emergenza",
+                Content = content,
+                PrimaryButtonText = "OK",
+                CloseButtonText = "Annulla",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+                RequestedTheme = ElementTheme.Dark
+            };
+            dialog.Opened += (_, _) => codeBox.Focus(FocusState.Programmatic);
+
+            var result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary ? codeBox.Text : null;
+        }
+        finally
+        {
+            _dialogGate.Release();
+        }
+    }
+
+    // ---- Codice di recupero ----
+
+    async Task ShowRecoveryCodeAsync()
+    {
+        if (ActiveTab is not { IsUnlocked: true } tab) return;
+
+        if (tab.RecoveryCode == null)
+        {
+            await ShowInfoDialogAsync("Il codice di recupero viene generato al primo salvataggio del file.", AppTitle);
+            return;
+        }
+
+        await ShowRecoveryCodeDialogAsync(tab);
+    }
+
+    async Task ShowRecoveryCodeDialogAsync(DocumentTab tab)
+    {
+        await _dialogGate.WaitAsync();
+        try
+        {
+            var content = new StackPanel { Spacing = 12 };
+            content.Children.Add(new TextBlock
+            {
+                Text = $"Codice di sblocco d'emergenza per '{tab.DisplayName}':",
+                TextWrapping = TextWrapping.Wrap
+            });
+            content.Children.Add(new TextBox
+            {
+                Text = tab.RecoveryCode,
+                IsReadOnly = true,
+                FontFamily = new FontFamily("Cascadia Code"),
+                TextAlignment = TextAlignment.Center
+            });
+            string note = "Permette di aprire il file in caso di password smarrita: conservalo in un luogo sicuro. " +
+                          "Viene rigenerato a ogni cambio di password.";
+            if (tab.Dirty)
+                note += "\n\nIl file ha modifiche non salvate: salva per essere certo che il codice sia attivo.";
+            content.Children.Add(new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
+
+            await new ContentDialog
+            {
+                Title = "Codice di recupero",
+                Content = content,
+                CloseButtonText = "OK",
+                XamlRoot = Content.XamlRoot,
+                RequestedTheme = ElementTheme.Dark
+            }.ShowAsync();
+        }
+        finally
+        {
+            _dialogGate.Release();
+        }
+    }
+
+    // ---- Modifiche concorrenti (multi-utente su share di rete) ----
+
+    void StartFileCheckTimer()
+    {
+        _fileCheckTimer = DispatcherQueue.CreateTimer();
+        _fileCheckTimer.Interval = TimeSpan.FromSeconds(3);
+        _fileCheckTimer.Tick += async (_, _) => await CheckExternalChangesAsync();
+        _fileCheckTimer.Start();
+    }
+
+    async Task CheckExternalChangesAsync()
+    {
+        if (_checkingFiles) return;
+        _checkingFiles = true;
+        try
+        {
+            foreach (var tab in _tabs.Where(t => t.IsUnlocked && t.FilePath != null && !t.Unlocking).ToList())
+            {
+                if (!await IsExternallyChangedAsync(tab)) continue;
+                // il dialog di conflitto puo' far passare tempo: si riverifica lo stato del tab
+                if (_tabs.Contains(tab) && tab.IsUnlocked && !tab.Unlocking)
+                    await HandleExternalChangeAsync(tab);
+            }
+        }
+        finally
+        {
+            _checkingFiles = false;
+        }
+    }
+
+    // Confronta lo stato del file su disco con l'ultimo stato noto del tab.
+    // L'I/O gira fuori dal thread UI: su share SMB con VPN giu' una stat puo' bloccare per secondi.
+    Task<bool> IsExternallyChangedAsync(DocumentTab tab)
+    {
+        string path = tab.FilePath!;
+        DateTime knownTime = tab.LastWriteTimeUtc;
+        long knownLength = tab.LastFileLength;
+        return Task.Run(() =>
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                return info.Exists && (info.LastWriteTimeUtc != knownTime || info.Length != knownLength);
+            }
+            catch
+            {
+                return false; // errore I/O transitorio: si riprova al prossimo tick
+            }
+        });
+    }
+
+    async Task HandleExternalChangeAsync(DocumentTab tab)
+    {
+        string path = tab.FilePath!;
+
+        byte[] data;
+        DateTime diskTime;
+        long diskLength;
+        try
+        {
+            // Stamp letto PRIMA dei byte: se qualcuno scrive tra stat e lettura, al peggio
+            // si fa un reload duplicato al tick successivo (mai un aggiornamento perso)
+            (data, diskTime, diskLength) = await Task.Run(() =>
+            {
+                var info = new FileInfo(path);
+                DateTime t = info.LastWriteTimeUtc;
+                long len = info.Length;
+                return (File.ReadAllBytes(path), t, len);
+            });
+        }
+        catch
+        {
+            return; // errore I/O transitorio: si riprova al prossimo tick
+        }
+
+        string newText;
+        string newRecoveryCode;
+        try
+        {
+            (newText, newRecoveryCode) = await Task.Run(() => CryptoService.Decrypt(data, tab.Password!));
+        }
+        catch (CryptographicException)
+        {
+            // Password cambiata da un altro utente, o lettura anomala: si riprova una volta
+            // al tick successivo prima di concludere che la password non e' piu' valida
+            tab.ReloadFailures++;
+            if (tab.ReloadFailures < 2) return;
+
+            tab.ReloadFailures = 0;
+            tab.LastWriteTimeUtc = diskTime;
+            tab.LastFileLength = diskLength;
+            tab.Relock();
+            UpdateTitle();
+            UpdateStatus();
+            ShowTransientNotice($"La password di '{tab.DisplayName}' e' stata cambiata da un altro utente: la scheda e' stata bloccata.");
+            return;
+        }
+
+        tab.ReloadFailures = 0;
+        tab.LastWriteTimeUtc = diskTime;
+        tab.LastFileLength = diskLength;
+        tab.RecoveryCode = newRecoveryCode; // un altro utente potrebbe averlo rigenerato
+
+        if (tab.Dirty)
+        {
+            // Conflitto: la versione su disco prevale; le modifiche locali vengono preservate
+            // in una nuova scheda "Senza titolo" per il merge manuale
+            string localText = tab.GetContent();
+            ReloadTabContent(tab, newText);
+
+            var backup = AddUntitledTab();
+            backup.SetContent(localText);
+            backup.SetDirty(true);
+            Tabs.SelectedItem = tab.Item; // si resta sul file ricaricato
+
+            await ShowInfoDialogAsync(
+                $"'{tab.DisplayName}' e' stato modificato da un altro utente ed e' stato ricaricato.\n\n" +
+                "Le tue modifiche non salvate sono state spostate in una nuova scheda \"Senza titolo\": " +
+                "riportale nel file a mano, se necessario.", AppTitle);
+        }
+        else
+        {
+            ReloadTabContent(tab, newText);
+            ShowTransientNotice($"'{tab.DisplayName}' e' stato aggiornato da un altro utente.");
+        }
+    }
+
+    // Sostituisce il contenuto dell'editor preservando (al meglio) la posizione del cursore
+    void ReloadTabContent(DocumentTab tab, string text)
+    {
+        int caret = tab.Editor.Document.Selection.StartPosition;
+        tab.SetContent(text);
+        int pos = Math.Min(caret, text.Length);
+        tab.Editor.Document.Selection.SetRange(pos, pos);
+    }
+
+    void ShowTransientNotice(string message)
+    {
+        NoticeBar.Message = message;
+        NoticeBar.IsOpen = true;
+
+        if (_noticeTimer == null)
+        {
+            _noticeTimer = DispatcherQueue.CreateTimer();
+            _noticeTimer.Interval = TimeSpan.FromSeconds(5);
+            _noticeTimer.IsRepeating = false;
+            _noticeTimer.Tick += (_, _) => NoticeBar.IsOpen = false;
+        }
+        _noticeTimer.Stop();
+        _noticeTimer.Start();
     }
 
     // ---- Salvataggio ----
@@ -259,7 +579,8 @@ public sealed partial class MainWindow : Window
         if (!tab.IsUnlocked) return false;
 
         // Primo salvataggio di un "Senza titolo": chiede percorso e password
-        if (tab.FilePath == null)
+        bool firstSave = tab.FilePath == null;
+        if (firstSave)
         {
             string? path = await PickSaveFileAsync();
             if (path == null) return false;
@@ -274,12 +595,22 @@ public sealed partial class MainWindow : Window
             tab.Password = pwd;
         }
 
+        // Un altro utente potrebbe aver salvato dopo l'ultimo poll: si verifica prima di
+        // sovrascrivere e in caso di conflitto si applica la stessa gestione del polling
+        if (!firstSave && await IsExternallyChangedAsync(tab))
+        {
+            await HandleExternalChangeAsync(tab);
+            return false;
+        }
+
         try
         {
-            byte[] data = CryptoService.Encrypt(tab.GetContent(), tab.Password!);
+            tab.RecoveryCode ??= CryptoService.GenerateRecoveryCode(); // primo salvataggio del file
+            byte[] data = CryptoService.Encrypt(tab.GetContent(), tab.Password!, tab.RecoveryCode);
             string tmp = tab.FilePath + ".tmp";
             File.WriteAllBytes(tmp, data);
-            File.Move(tmp, tab.FilePath, overwrite: true);
+            File.Move(tmp, tab.FilePath!, overwrite: true);
+            tab.RefreshFileStamp(); // il proprio salvataggio non deve apparire come modifica esterna
             tab.SetDirty(false); // aggiorna anche header, titolo e status bar via _onChanged
             return true;
         }
@@ -465,6 +796,7 @@ public sealed partial class MainWindow : Window
     async void OnMenuSaveAll(object sender, RoutedEventArgs e) => await SaveAllAsync();
     async void OnMenuCloseTab(object sender, RoutedEventArgs e) => await CloseActiveTabAsync();
     async void OnMenuChangePassword(object sender, RoutedEventArgs e) => await ChangePasswordActiveAsync();
+    async void OnMenuRecoveryCode(object sender, RoutedEventArgs e) => await ShowRecoveryCodeAsync();
     async void OnMenuExit(object sender, RoutedEventArgs e) => await ForceCloseAsync();
     async void OnMenuAbout(object sender, RoutedEventArgs e) => await ShowAboutDialogAsync();
     void OnMenuFontSizeUp(object sender, RoutedEventArgs e)   => SetFontSize(_fontSize + 1);
@@ -562,6 +894,10 @@ public sealed partial class MainWindow : Window
     // ---- Dialogs (in WinUI 3 un solo ContentDialog puo' essere aperto per volta) ----
 
     async Task<string?> ShowPasswordDialogAsync(string prompt)
+        => (await ShowPasswordDialogCoreAsync(prompt, offerRecovery: false)).Password;
+
+    // Con offerRecovery il dialog espone "Password dimenticata?" (sblocco d'emergenza)
+    async Task<(string? Password, bool RecoveryRequested)> ShowPasswordDialogCoreAsync(string prompt, bool offerRecovery)
     {
         await _dialogGate.WaitAsync();
         try
@@ -576,6 +912,7 @@ public sealed partial class MainWindow : Window
                 Title = "Password richiesta",
                 Content = content,
                 PrimaryButtonText = "OK",
+                SecondaryButtonText = offerRecovery ? "Password dimenticata?" : "",
                 CloseButtonText = "Annulla",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
@@ -584,7 +921,12 @@ public sealed partial class MainWindow : Window
             dialog.Opened += (_, _) => passwordBox.Focus(FocusState.Programmatic);
 
             var result = await dialog.ShowAsync();
-            return result == ContentDialogResult.Primary ? passwordBox.Password : null;
+            return result switch
+            {
+                ContentDialogResult.Primary => (passwordBox.Password, false),
+                ContentDialogResult.Secondary => (null, true),
+                _ => (null, false)
+            };
         }
         finally
         {
