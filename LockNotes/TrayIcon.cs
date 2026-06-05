@@ -65,6 +65,7 @@ sealed class TrayIcon : IDisposable
     [DllImport("user32.dll")] static extern int TrackPopupMenuEx(IntPtr hMenu, uint flags, int x, int y, IntPtr hWnd, IntPtr tpm);
     [DllImport("user32.dll")] static extern bool DestroyMenu(IntPtr hMenu);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadImage(IntPtr hinst, string name, uint type, int cx, int cy, uint fu);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string? name);
 
     const uint NIM_ADD = 0, NIM_DELETE = 2, NIM_SETVERSION = 4;
@@ -74,7 +75,8 @@ sealed class TrayIcon : IDisposable
     const uint WM_RBUTTONUP = 0x205, WM_LBUTTONDBLCLK = 0x203, WM_CONTEXTMENU = 0x7B, WM_NULL = 0;
     const uint MF_STRING = 0, MF_SEPARATOR = 0x800, MF_CHECKED = 8;
     const uint TPM_RIGHTBUTTON = 2, TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100;
-    const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10, LR_DEFAULTSIZE = 0x40;
+    const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10;
+    const int SM_CXSMICON = 49, SM_CYSMICON = 50;
 
     const int CMD_OPEN = 1, CMD_STARTUP = 2, CMD_EXIT = 3;
 
@@ -126,7 +128,12 @@ sealed class TrayIcon : IDisposable
         _hWnd = CreateWindowEx(0, className, "LockNotesTray", 0, 0, 0, 0, 0,
                                new IntPtr(-3), IntPtr.Zero, hInst, IntPtr.Zero);
 
-        var hIcon = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+        // Dimensione "small icon" di sistema (16 a 100% DPI, 20/24 a DPI maggiori):
+        // cosi' dal .ico viene scelto il frame semplificato pensato per la tray,
+        // non la versione dettagliata 32px rimpicciolita.
+        int smallCx = GetSystemMetrics(SM_CXSMICON);
+        int smallCy = GetSystemMetrics(SM_CYSMICON);
+        var hIcon = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, smallCx, smallCy, LR_LOADFROMFILE);
 
         _nid = new NOTIFYICONDATA
         {
