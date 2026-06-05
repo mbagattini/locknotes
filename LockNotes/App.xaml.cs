@@ -1,7 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.Win32;
 using System.Diagnostics;
-using System.Text.Json;
 
 namespace LockNotes;
 
@@ -30,8 +29,10 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // Solo l'eventuale path da CLI: il ripristino della sessione (lista tab)
+        // lo gestisce MainWindow leggendo i settings.
         string[] cmdArgs = Environment.GetCommandLineArgs();
-        string? filePath = cmdArgs.Length > 1 ? cmdArgs[1] : TryLoadLastFilePath();
+        string? filePath = cmdArgs.Length > 1 ? cmdArgs[1] : null;
         _mainWindow = new MainWindow(filePath);
         _mainWindow.Activate();
 
@@ -84,22 +85,5 @@ public partial class App : Application
             }
         }
         catch { }
-    }
-
-    static string? TryLoadLastFilePath()
-    {
-        try
-        {
-            string path = Path.Combine(AppContext.BaseDirectory, "locknotes.settings.json");
-            if (!File.Exists(path)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            if (doc.RootElement.TryGetProperty("LastFilePath", out var prop))
-            {
-                string? last = prop.GetString();
-                return last != null && File.Exists(last) ? last : null;
-            }
-        }
-        catch { }
-        return null;
     }
 }

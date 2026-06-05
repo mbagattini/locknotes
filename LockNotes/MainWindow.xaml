@@ -6,32 +6,62 @@
 
     <Grid RequestedTheme="Dark" KeyboardAcceleratorPlacementMode="Hidden">
         <Grid.RowDefinitions>
-            <RowDefinition Height="32"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Grid.KeyboardAccelerators>
-            <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="OnCtrlS"/>
+            <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="OnCtrlN"/>
             <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="OnCtrlO"/>
+            <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="OnCtrlS"/>
+            <KeyboardAccelerator Key="S" Modifiers="Control,Shift" Invoked="OnCtrlShiftS"/>
+            <KeyboardAccelerator Key="W" Modifiers="Control" Invoked="OnCtrlW"/>
             <KeyboardAccelerator Key="P" Modifiers="Control" Invoked="OnCtrlP"/>
         </Grid.KeyboardAccelerators>
 
-        <!-- Custom title bar drag region -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
-            <TextBlock x:Name="TitleText"
-                       VerticalAlignment="Center"
-                       Margin="16,0,148,0"
-                       Foreground="#D8DEE9"
-                       FontSize="12"/>
-        </Grid>
+        <!-- Title bar in stile Notepad: icona app, tab strip e zona di drag.
+             I tab item portano solo l'header: gli editor vivono in EditorHost (riga 2),
+             cosi' la barra dei menu' puo' stare tra la strip e il contenuto. -->
+        <TabView Grid.Row="0"
+                 x:Name="Tabs"
+                 Background="Transparent"
+                 TabWidthMode="SizeToContent"
+                 CanReorderTabs="True"
+                 IsAddTabButtonVisible="True"
+                 AddTabButtonClick="OnAddTabClick"
+                 TabCloseRequested="OnTabCloseRequested"
+                 SelectionChanged="OnTabSelectionChanged">
+            <TabView.Resources>
+                <SolidColorBrush x:Key="TabViewBackground" Color="Transparent"/>
+                <!-- Come Notepad: la tab selezionata ha lo stesso colore della superficie dell'editor -->
+                <SolidColorBrush x:Key="TabViewItemHeaderBackgroundSelected" Color="#2E3440"/>
+            </TabView.Resources>
+            <TabView.TabStripHeader>
+                <Image Source="ms-appx:///Assets/locknotes.ico"
+                       Width="16" Height="16"
+                       Margin="14,0,6,0"
+                       VerticalAlignment="Center"/>
+            </TabView.TabStripHeader>
+            <TabView.TabStripFooter>
+                <!-- Spazio vuoto a destra dei tab: e' la drag region della finestra
+                     (SetTitleBar in code-behind); MinWidth riserva i pulsanti di sistema -->
+                <Grid x:Name="TitleBarDragRegion" Background="Transparent" MinWidth="160"/>
+            </TabView.TabStripFooter>
+        </TabView>
 
-        <!-- Menu bar -->
-        <MenuBar Grid.Row="1" Background="#232831">
+        <!-- Menu bar: stesso colore della tab selezionata, cosi' tab attiva e menu
+             formano una superficie continua come in Notepad -->
+        <MenuBar Grid.Row="1" Background="#2E3440">
             <MenuBarItem Title="File">
+                <MenuFlyoutItem Text="Nuova scheda" KeyboardAcceleratorTextOverride="Ctrl+N" Click="OnMenuNew"/>
+                <MenuFlyoutItem Text="Apri..." KeyboardAcceleratorTextOverride="Ctrl+O" Click="OnMenuOpen"/>
+                <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Salva" KeyboardAcceleratorTextOverride="Ctrl+S" Click="OnMenuSave"/>
-                <MenuFlyoutItem Text="Apri altro..." KeyboardAcceleratorTextOverride="Ctrl+O" Click="OnMenuOpen"/>
+                <MenuFlyoutItem Text="Salva tutto" KeyboardAcceleratorTextOverride="Ctrl+Shift+S" Click="OnMenuSaveAll"/>
+                <MenuFlyoutItem Text="Chiudi tab" KeyboardAcceleratorTextOverride="Ctrl+W" Click="OnMenuCloseTab"/>
+                <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Cambia Password..." KeyboardAcceleratorTextOverride="Ctrl+P" Click="OnMenuChangePassword"/>
                 <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Esci" Click="OnMenuExit"/>
@@ -45,40 +75,9 @@
             </MenuBarItem>
         </MenuBar>
 
-        <!-- Main text editor -->
-        <RichEditBox Grid.Row="2"
-                 x:Name="txtContent"
-                 TextWrapping="NoWrap"
-                 FontFamily="Cascadia Code"
-                 FontWeight="Medium"
-                 Background="#2E3440"
-                 Foreground="#D8DEE9"
-                 BorderThickness="0"
-                 CornerRadius="0"
-                 Padding="12"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                 ScrollViewer.VerticalScrollBarVisibility="Auto"
-                 IsSpellCheckEnabled="False"
-                 IsTextPredictionEnabled="False"
-                 VerticalContentAlignment="Top"
-                 TextChanged="OnTextChanged"
-                 KeyDown="OnTextBoxKeyDown"
-                 Paste="OnPaste">
-            <RichEditBox.SelectionHighlightColor>
-                <SolidColorBrush Color="#4C566A"/>
-            </RichEditBox.SelectionHighlightColor>
-            <RichEditBox.Resources>
-                <SolidColorBrush x:Key="TextControlBackground" Color="#2E3440"/>
-                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#2E3440"/>
-                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#2E3440"/>
-                <SolidColorBrush x:Key="TextControlForeground" Color="#D8DEE9"/>
-                <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#D8DEE9"/>
-                <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#D8DEE9"/>
-                <SolidColorBrush x:Key="TextControlBorderBrush" Color="Transparent"/>
-                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent"/>
-                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent"/>
-            </RichEditBox.Resources>
-        </RichEditBox>
+        <!-- Editor dei tab: un Grid (editor + placeholder) per file, creato in
+             code-behind (DocumentTab); e' visibile solo quello del tab attivo -->
+        <Grid Grid.Row="2" x:Name="EditorHost" Background="#232831"/>
 
         <!-- Status bar -->
         <Border Grid.Row="3"
