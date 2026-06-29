@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     int _fontSize = 15;
     List<string> _restoreFiles = new();
     int _restoreActiveIndex;
+    bool _assocPromptShown;
 
     DocumentTab? ActiveTab => Tabs.SelectedItem is TabViewItem item
         ? _tabs.FirstOrDefault(t => t.Item == item)
@@ -65,6 +66,19 @@ public sealed partial class MainWindow : Window
     {
         ((FrameworkElement)Content).Loaded -= OnContentLoaded;
         await RestoreSessionAsync();
+        await CheckAssocPromptAsync();
+    }
+
+    async Task CheckAssocPromptAsync()
+    {
+        if (_assocPromptShown || App.IsFileAssociationRegistered()) return;
+        bool answer = await ShowYesNoDialogAsync(
+            "Vuoi associare i file .stxt a Lock Notes?\nDoppio click su un file .stxt lo aprira' direttamente.",
+            "Associazione file");
+        _assocPromptShown = true;
+        SaveWindowSettings();
+        if (answer)
+            App.RegisterFileAssociation();
     }
 
     // ---- Sessione e gestione tab ----
@@ -110,7 +124,7 @@ public sealed partial class MainWindow : Window
             onChanged: OnTabChanged,
             onFontDelta: delta => SetFontSize(_fontSize + delta),
             onUnlockRequest: t => _ = UnlockTabAsync(t));
-        tab.ApplyFontSize(_fontSize, (float)(MeasureCharWidth() * 4));
+        tab.ApplyFontSize(_fontSize, ComputeTabStop());
         _tabs.Add(tab);
         EditorHost.Children.Add(tab.Root);
         Tabs.TabItems.Add(tab.Item);
@@ -648,6 +662,14 @@ public sealed partial class MainWindow : Window
         _tabs.Remove(tab);
         EditorHost.Children.Remove(tab.Root);
         Tabs.TabItems.Remove(tab.Item);
+
+        // Se era l'ultima tab, ne apriamo subito una nuova vuota: l'app non resta mai senza tab.
+        if (_tabs.Count == 0)
+        {
+            AddUntitledTab();
+            return true;
+        }
+
         UpdateEditorVisibility();
         UpdateTitle();
         UpdateStatus();
@@ -711,6 +733,16 @@ public sealed partial class MainWindow : Window
         Activate();
     }
 
+    internal void OpenFromPath(string path)
+    {
+        ShowFromTray();
+        DocumentTab? existing = FindTabByPath(path);
+        if (existing != null)
+            Tabs.SelectedItem = existing.Item;
+        else if (File.Exists(path))
+            AddTab(path, selectAfter: true);
+    }
+
     // ---- Titolo / status / font ----
 
     void UpdateTitle()
@@ -770,11 +802,14 @@ public sealed partial class MainWindow : Window
     void SetFontSize(int size)
     {
         _fontSize = Math.Clamp(size, 10, 32);
-        // Tabulazione pari a 4 caratteri: il font e' monospace, quindi 4 x larghezza di un carattere.
-        float tabStop = (float)(MeasureCharWidth() * 4);
+        float tabStop = ComputeTabStop();
         foreach (var tab in _tabs)
             tab.ApplyFontSize(_fontSize, tabStop);
     }
+
+    // Tabulazione pari a 4 caratteri (font monospace). DefaultTabStop e' espresso in punti (1/72"),
+    // mentre MeasureCharWidth() restituisce DIP (1/96"): converto moltiplicando per 72/96.
+    float ComputeTabStop() => (float)(MeasureCharWidth() * 4 * 72.0 / 96.0);
 
     double MeasureCharWidth()
     {
@@ -799,6 +834,11 @@ public sealed partial class MainWindow : Window
     async void OnMenuRecoveryCode(object sender, RoutedEventArgs e) => await ShowRecoveryCodeAsync();
     async void OnMenuExit(object sender, RoutedEventArgs e) => await ForceCloseAsync();
     async void OnMenuAbout(object sender, RoutedEventArgs e) => await ShowAboutDialogAsync();
+    void OnMenuRegisterAssociation(object sender, RoutedEventArgs e)
+    {
+        App.RegisterFileAssociation();
+        ShowTransientNotice("Associazione .stxt registrata: il doppio click sui file .stxt aprira' Lock Notes.");
+    }
     void OnMenuFontSizeUp(object sender, RoutedEventArgs e)   => SetFontSize(_fontSize + 1);
     void OnMenuFontSizeDown(object sender, RoutedEventArgs e) => SetFontSize(_fontSize - 1);
 
@@ -842,11 +882,13 @@ public sealed partial class MainWindow : Window
 
     async Task ShowAboutDialogAsync()
     {
-        string ver = ((System.Reflection.AssemblyInformationalVersionAttribute?)
+        string rawVer = ((System.Reflection.AssemblyInformationalVersionAttribute?)
             Attribute.GetCustomAttribute(
                 typeof(MainWindow).Assembly,
                 typeof(System.Reflection.AssemblyInformationalVersionAttribute)))
             ?.InformationalVersion ?? "—";
+        int plus = rawVer.IndexOf('+');
+        string ver = plus >= 0 ? rawVer[..plus] : rawVer;
         await ShowInfoDialogAsync(
             $"Lock Notes  v{ver}\n\nGestore di file di testo cifrati.\n\n© 2026 Matteo Bagattini",
             "Informazioni");
@@ -954,6 +996,29 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    async Task<bool> ShowYesNoDialogAsync(string message, string title)
+    {
+        await _dialogGate.WaitAsync();
+        try
+        {
+            var result = await new ContentDialog
+            {
+                Title = title,
+                Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Sì",
+                CloseButtonText = "No",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Content.XamlRoot,
+                RequestedTheme = ElementTheme.Dark
+            }.ShowAsync();
+            return result == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            _dialogGate.Release();
+        }
+    }
+
     async Task<bool?> ShowYesNoCancelDialogAsync(string message, string title)
     {
         await _dialogGate.WaitAsync();
@@ -986,7 +1051,8 @@ public sealed partial class MainWindow : Window
     // ---- Window State ----
 
     record WindowSettings(int Width, int Height, int X, int Y, bool Maximized,
-        List<string>? OpenFiles = null, int ActiveIndex = 0, int FontSize = 15);
+        List<string>? OpenFiles = null, int ActiveIndex = 0, int FontSize = 15,
+        bool AssocPromptShown = false);
 
     string SettingsPath => Path.Combine(AppContext.BaseDirectory, "locknotes.settings.json");
 
@@ -1003,6 +1069,7 @@ public sealed partial class MainWindow : Window
             SetFontSize(s.FontSize);
             _restoreFiles = s.OpenFiles ?? new List<string>();
             _restoreActiveIndex = s.ActiveIndex;
+            _assocPromptShown = s.AssocPromptShown;
         }
         catch { }
     }
@@ -1021,7 +1088,7 @@ public sealed partial class MainWindow : Window
                 .ToList();
             int activeIndex = Math.Max(0, Tabs.SelectedIndex);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(
-                new WindowSettings(size.Width, size.Height, pos.X, pos.Y, maximized, openFiles, activeIndex, _fontSize)));
+                new WindowSettings(size.Width, size.Height, pos.X, pos.Y, maximized, openFiles, activeIndex, _fontSize, _assocPromptShown)));
         }
         catch { }
     }

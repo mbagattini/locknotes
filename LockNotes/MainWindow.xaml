@@ -73,6 +73,8 @@
                 <MenuFlyoutItem Text="Riduci dimensione testo"  KeyboardAcceleratorTextOverride="Ctrl+-"  Click="OnMenuFontSizeDown"/>
             </MenuBarItem>
             <MenuBarItem Title="?">
+                <MenuFlyoutItem Text="Associa .stxt a Lock Notes" Click="OnMenuRegisterAssociation"/>
+                <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Informazioni..." Click="OnMenuAbout"/>
             </MenuBarItem>
         </MenuBar>

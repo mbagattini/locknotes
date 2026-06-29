@@ -44,7 +44,17 @@ public static class Program
     static void OnActivated(object? sender, AppActivationArguments args)
     {
         // Invocato sull'istanza principale quando un'altra istanza prova a partire.
-        (Application.Current as App)?.OnRedirectedActivation();
+        string? filePath = null;
+        if (args.Kind == ExtendedActivationKind.Launch &&
+            args.Data is Windows.ApplicationModel.Activation.ILaunchActivatedEventArgs launch)
+        {
+            string raw = launch.Arguments.Trim();
+            if (raw.StartsWith('"') && raw.EndsWith('"') && raw.Length > 2)
+                raw = raw[1..^1];
+            if (!string.IsNullOrEmpty(raw))
+                filePath = raw;
+        }
+        (Application.Current as App)?.OnRedirectedActivation(filePath);
     }
 
     // ---- Redirezione con pump dei messaggi COM (pattern documentato WinUI 3) ----
