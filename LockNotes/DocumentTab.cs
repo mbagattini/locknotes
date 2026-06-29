@@ -22,7 +22,7 @@ sealed class DocumentTab
     public string? FilePath { get; set; } // null per i documenti nuovi mai salvati ("Senza titolo")
     public string? Password { get; set; }
     public string? RecoveryCode { get; set; } // null per i "Senza titolo" fino al primo salvataggio
-    public string DisplayName => FilePath == null ? "Senza titolo" : Path.GetFileName(FilePath);
+    public string DisplayName => FilePath == null ? "Untitled" : Path.GetFileName(FilePath);
     public bool Dirty { get; private set; }
     public bool IsUnlocked { get; private set; }
     public bool Unlocking { get; set; } // guard contro doppi prompt password
@@ -205,13 +205,13 @@ sealed class DocumentTab
         });
         panel.Children.Add(new TextBlock
         {
-            Text = "File bloccato",
+            Text = "File locked",
             Foreground = new SolidColorBrush(_colorMuted),
             HorizontalAlignment = HorizontalAlignment.Center
         });
         var unlockButton = new Button
         {
-            Content = "Sblocca...",
+            Content = "Unlock...",
             HorizontalAlignment = HorizontalAlignment.Center
         };
         unlockButton.Click += (_, _) => _onUnlockRequest(this);

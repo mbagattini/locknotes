@@ -73,8 +73,8 @@ public sealed partial class MainWindow : Window
     {
         if (_assocPromptShown || App.IsFileAssociationRegistered()) return;
         bool answer = await ShowYesNoDialogAsync(
-            "Vuoi associare i file .stxt a Lock Notes?\nDoppio click su un file .stxt lo aprira' direttamente.",
-            "Associazione file");
+            "Associate .stxt files with Lock Notes?\nDouble-clicking a .stxt file will open it directly.",
+            "File association");
         _assocPromptShown = true;
         SaveWindowSettings();
         if (answer)
@@ -208,7 +208,7 @@ public sealed partial class MainWindow : Window
             for (int attempt = 1; attempt <= MaxAttempts; attempt++)
             {
                 (string? pwd, bool recovery) = await ShowPasswordDialogCoreAsync(
-                    $"Password per '{tab.DisplayName}':", offerRecovery: true);
+                    $"Password for '{tab.DisplayName}':", offerRecovery: true);
 
                 if (recovery)
                 {
@@ -235,13 +235,13 @@ public sealed partial class MainWindow : Window
                 catch (CryptographicException)
                 {
                     string msg = attempt < MaxAttempts
-                        ? $"Password errata o file corrotto. Tentativi rimanenti: {MaxAttempts - attempt}."
-                        : "Password errata o file corrotto. Numero massimo di tentativi raggiunto.";
-                    await ShowInfoDialogAsync(msg, "Avviso");
+                        ? $"Wrong password or corrupted file. Attempts remaining: {MaxAttempts - attempt}."
+                        : "Wrong password or corrupted file. Maximum attempts reached.";
+                    await ShowInfoDialogAsync(msg, "Warning");
                 }
                 catch (Exception ex)
                 {
-                    await ShowInfoDialogAsync($"Errore durante l'apertura:\n{ex.Message}", AppTitle);
+                    await ShowInfoDialogAsync($"Error opening file:\n{ex.Message}", AppTitle);
                     return false;
                 }
             }
@@ -253,19 +253,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    async Task<string?> AskNewPasswordAsync(string prompt = "Inserisci la password per il nuovo file:")
+    async Task<string?> AskNewPasswordAsync(string prompt = "Enter a password for the new file:")
     {
         while (true)
         {
             string? pwd1 = await ShowPasswordDialogAsync(prompt);
             if (pwd1 == null) return null;
 
-            string? pwd2 = await ShowPasswordDialogAsync("Conferma la password:");
+            string? pwd2 = await ShowPasswordDialogAsync("Confirm password:");
             if (pwd2 == null) return null;
 
             if (pwd1 == pwd2) return pwd1;
 
-            await ShowInfoDialogAsync("Le password non coincidono. Riprova.", AppTitle);
+            await ShowInfoDialogAsync("Passwords do not match. Try again.", AppTitle);
         }
     }
 
@@ -274,14 +274,14 @@ public sealed partial class MainWindow : Window
         // Solo per file gia' salvati: per i "Senza titolo" la password si sceglie al salvataggio
         if (ActiveTab is not { IsUnlocked: true, FilePath: not null } tab) return;
 
-        string? pwd = await AskNewPasswordAsync("Inserisci la nuova password:");
+        string? pwd = await AskNewPasswordAsync("Enter the new password:");
         if (pwd == null) return;
         tab.Password = pwd;
         tab.RecoveryCode = CryptoService.GenerateRecoveryCode(); // il vecchio codice decade col salvataggio
         tab.SetDirty(true);
         await ShowInfoDialogAsync(
-            "Password aggiornata e nuovo codice di recupero generato " +
-            "(visualizzalo da File > Codice di recupero). Salva per applicare le modifiche.", AppTitle);
+            "Password updated and new recovery code generated " +
+            "(view it from File > Recovery code). Save to apply the changes.", AppTitle);
     }
 
     // ---- Sblocco d'emergenza ----
@@ -304,22 +304,22 @@ public sealed partial class MainWindow : Window
             catch (CryptographicException)
             {
                 string msg = attempt < MaxAttempts
-                    ? $"Codice di recupero errato. Tentativi rimanenti: {MaxAttempts - attempt}."
-                    : "Codice di recupero errato. Numero massimo di tentativi raggiunto.";
-                await ShowInfoDialogAsync(msg, "Avviso");
+                    ? $"Wrong recovery code. Attempts remaining: {MaxAttempts - attempt}."
+                    : "Wrong recovery code. Maximum attempts reached.";
+                await ShowInfoDialogAsync(msg, "Warning");
                 continue;
             }
             catch (Exception ex)
             {
-                await ShowInfoDialogAsync($"Errore durante l'apertura:\n{ex.Message}", AppTitle);
+                await ShowInfoDialogAsync($"Error opening file:\n{ex.Message}", AppTitle);
                 return false;
             }
 
             // La vecchia password resta sconosciuta: senza una nuova il recupero viene annullato
-            string? newPwd = await AskNewPasswordAsync("Codice corretto. Imposta una nuova password per il file:");
+            string? newPwd = await AskNewPasswordAsync("Code correct. Set a new password for the file:");
             if (newPwd == null)
             {
-                await ShowInfoDialogAsync("Recupero annullato: senza una nuova password il file resta bloccato.", AppTitle);
+                await ShowInfoDialogAsync("Recovery cancelled: the file remains locked without a new password.", AppTitle);
                 return false;
             }
 
@@ -353,17 +353,17 @@ public sealed partial class MainWindow : Window
             var content = new StackPanel { Spacing = 8 };
             content.Children.Add(new TextBlock
             {
-                Text = $"Inserisci il codice di recupero per '{displayName}':",
+                Text = $"Enter the recovery code for '{displayName}':",
                 TextWrapping = TextWrapping.Wrap
             });
             content.Children.Add(codeBox);
 
             var dialog = new ContentDialog
             {
-                Title = "Sblocco d'emergenza",
+                Title = "Emergency unlock",
                 Content = content,
                 PrimaryButtonText = "OK",
-                CloseButtonText = "Annulla",
+                CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark
@@ -387,7 +387,7 @@ public sealed partial class MainWindow : Window
 
         if (tab.RecoveryCode == null)
         {
-            await ShowInfoDialogAsync("Il codice di recupero viene generato al primo salvataggio del file.", AppTitle);
+            await ShowInfoDialogAsync("The recovery code is generated on the first save.", AppTitle);
             return;
         }
 
@@ -402,7 +402,7 @@ public sealed partial class MainWindow : Window
             var content = new StackPanel { Spacing = 12 };
             content.Children.Add(new TextBlock
             {
-                Text = $"Codice di sblocco d'emergenza per '{tab.DisplayName}':",
+                Text = $"Emergency unlock code for '{tab.DisplayName}':",
                 TextWrapping = TextWrapping.Wrap
             });
             content.Children.Add(new TextBox
@@ -412,15 +412,15 @@ public sealed partial class MainWindow : Window
                 FontFamily = new FontFamily("Cascadia Code"),
                 TextAlignment = TextAlignment.Center
             });
-            string note = "Permette di aprire il file in caso di password smarrita: conservalo in un luogo sicuro. " +
-                          "Viene rigenerato a ogni cambio di password.";
+            string note = "Allows opening the file if the password is lost: keep it in a safe place. " +
+                          "Regenerated on every password change.";
             if (tab.Dirty)
-                note += "\n\nIl file ha modifiche non salvate: salva per essere certo che il codice sia attivo.";
+                note += "\n\nThe file has unsaved changes: save to ensure the code is active.";
             content.Children.Add(new TextBlock { Text = note, TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
 
             await new ContentDialog
             {
-                Title = "Codice di recupero",
+                Title = "Recovery code",
                 Content = content,
                 CloseButtonText = "OK",
                 XamlRoot = Content.XamlRoot,
@@ -527,7 +527,7 @@ public sealed partial class MainWindow : Window
             tab.Relock();
             UpdateTitle();
             UpdateStatus();
-            ShowTransientNotice($"La password di '{tab.DisplayName}' e' stata cambiata da un altro utente: la scheda e' stata bloccata.");
+            ShowTransientNotice($"The password for '{tab.DisplayName}' was changed by another user: the tab has been locked.");
             return;
         }
 
@@ -549,14 +549,14 @@ public sealed partial class MainWindow : Window
             Tabs.SelectedItem = tab.Item; // si resta sul file ricaricato
 
             await ShowInfoDialogAsync(
-                $"'{tab.DisplayName}' e' stato modificato da un altro utente ed e' stato ricaricato.\n\n" +
-                "Le tue modifiche non salvate sono state spostate in una nuova scheda \"Senza titolo\": " +
-                "riportale nel file a mano, se necessario.", AppTitle);
+                $"'{tab.DisplayName}' was modified by another user and has been reloaded.\n\n" +
+                "Your unsaved changes have been moved to a new untitled tab: " +
+                "merge them back manually if needed.", AppTitle);
         }
         else
         {
             ReloadTabContent(tab, newText);
-            ShowTransientNotice($"'{tab.DisplayName}' e' stato aggiornato da un altro utente.");
+            ShowTransientNotice($"'{tab.DisplayName}' was updated by another user.");
         }
     }
 
@@ -600,7 +600,7 @@ public sealed partial class MainWindow : Window
             if (path == null) return false;
             if (FindTabByPath(path) != null)
             {
-                await ShowInfoDialogAsync("Il file e' gia' aperto in un'altra scheda.", AppTitle);
+                await ShowInfoDialogAsync("The file is already open in another tab.", AppTitle);
                 return false;
             }
             string? pwd = await AskNewPasswordAsync();
@@ -630,7 +630,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            await ShowInfoDialogAsync($"Errore durante il salvataggio:\n{ex.Message}", AppTitle);
+            await ShowInfoDialogAsync($"Error saving:\n{ex.Message}", AppTitle);
             return false;
         }
     }
@@ -654,7 +654,7 @@ public sealed partial class MainWindow : Window
         {
             Tabs.SelectedItem = tab.Item; // mostra quale tab si sta chiudendo
             bool? answer = await ShowYesNoCancelDialogAsync(
-                $"'{tab.DisplayName}' ha modifiche non salvate. Salvare prima di chiudere?", AppTitle);
+                $"'{tab.DisplayName}' has unsaved changes. Save before closing?", AppTitle);
             if (answer == null) return false;
             if (answer == true && !await SaveAsync(tab)) return false; // salvataggio annullato: il tab resta aperto
         }
@@ -697,7 +697,7 @@ public sealed partial class MainWindow : Window
         {
             Tabs.SelectedItem = tab.Item;
             bool? answer = await ShowYesNoCancelDialogAsync(
-                $"'{tab.DisplayName}' ha modifiche non salvate. Salvare prima di uscire?", AppTitle);
+                $"'{tab.DisplayName}' has unsaved changes. Save before exiting?", AppTitle);
             if (answer == null) return; // Annulla interrompe l'uscita
             if (answer == true && !await SaveAsync(tab)) return; // salvataggio annullato: si resta aperti
         }
@@ -767,7 +767,7 @@ public sealed partial class MainWindow : Window
         lblFilePath.Text = tab.FilePath ?? tab.DisplayName;
         if (!tab.IsUnlocked)
         {
-            lblInfo.Text = "bloccato";
+            lblInfo.Text = "locked";
             return;
         }
         tab.Editor.Document.GetText(TextGetOptions.None, out string text);
@@ -775,7 +775,7 @@ public sealed partial class MainWindow : Window
         if (text.EndsWith('\r')) text = text[..^1];
         lblInfo.Text = text.Length == 0
             ? string.Empty
-            : $"{text.Split('\r').Length} righe, {text.Length} caratteri";
+            : $"{text.Split('\r').Length} lines, {text.Length} chars";
     }
 
     void FocusEditor(DocumentTab tab)
@@ -837,7 +837,7 @@ public sealed partial class MainWindow : Window
     void OnMenuRegisterAssociation(object sender, RoutedEventArgs e)
     {
         App.RegisterFileAssociation();
-        ShowTransientNotice("Associazione .stxt registrata: il doppio click sui file .stxt aprira' Lock Notes.");
+        ShowTransientNotice(".stxt association registered: double-clicking .stxt files will open Lock Notes.");
     }
     void OnMenuFontSizeUp(object sender, RoutedEventArgs e)   => SetFontSize(_fontSize + 1);
     void OnMenuFontSizeDown(object sender, RoutedEventArgs e) => SetFontSize(_fontSize - 1);
@@ -890,8 +890,8 @@ public sealed partial class MainWindow : Window
         int plus = rawVer.IndexOf('+');
         string ver = plus >= 0 ? rawVer[..plus] : rawVer;
         await ShowInfoDialogAsync(
-            $"Lock Notes  v{ver}\n\nGestore di file di testo cifrati.\n\n© 2026 Matteo Bagattini",
-            "Informazioni");
+            $"Lock Notes  v{ver}\n\nEncrypted text file manager.\n\n© 2026 Matteo Bagattini",
+            "About");
     }
 
     // ---- File Pickers (serializzati dal gate come i dialoghi) ----
@@ -921,7 +921,7 @@ public sealed partial class MainWindow : Window
         {
             var picker = new FileSavePicker();
             InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
-            picker.FileTypeChoices.Add("File cifrati", new List<string> { ".stxt" });
+            picker.FileTypeChoices.Add("Encrypted files", new List<string> { ".stxt" });
             picker.DefaultFileExtension = ".stxt";
             picker.SuggestedFileName = "note";
             var file = await picker.PickSaveFileAsync();
@@ -951,11 +951,11 @@ public sealed partial class MainWindow : Window
 
             var dialog = new ContentDialog
             {
-                Title = "Password richiesta",
+                Title = "Password required",
                 Content = content,
                 PrimaryButtonText = "OK",
-                SecondaryButtonText = offerRecovery ? "Password dimenticata?" : "",
-                CloseButtonText = "Annulla",
+                SecondaryButtonText = offerRecovery ? "Forgot password?" : "",
+                CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark
@@ -1005,7 +1005,7 @@ public sealed partial class MainWindow : Window
             {
                 Title = title,
                 Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                PrimaryButtonText = "Sì",
+                PrimaryButtonText = "Yes",
                 CloseButtonText = "No",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
@@ -1028,9 +1028,9 @@ public sealed partial class MainWindow : Window
             {
                 Title = title,
                 Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                PrimaryButtonText = "Sì",
+                PrimaryButtonText = "Yes",
                 SecondaryButtonText = "No",
-                CloseButtonText = "Annulla",
+                CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
                 XamlRoot = Content.XamlRoot,
                 RequestedTheme = ElementTheme.Dark

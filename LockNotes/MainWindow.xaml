@@ -56,26 +56,26 @@
              formano una superficie continua come in Notepad -->
         <MenuBar Grid.Row="1" Background="#2E3440">
             <MenuBarItem Title="File">
-                <MenuFlyoutItem Text="Nuova scheda" KeyboardAcceleratorTextOverride="Ctrl+N" Click="OnMenuNew"/>
-                <MenuFlyoutItem Text="Apri..." KeyboardAcceleratorTextOverride="Ctrl+O" Click="OnMenuOpen"/>
+                <MenuFlyoutItem Text="New tab" KeyboardAcceleratorTextOverride="Ctrl+N" Click="OnMenuNew"/>
+                <MenuFlyoutItem Text="Open..." KeyboardAcceleratorTextOverride="Ctrl+O" Click="OnMenuOpen"/>
                 <MenuFlyoutSeparator/>
-                <MenuFlyoutItem Text="Salva" KeyboardAcceleratorTextOverride="Ctrl+S" Click="OnMenuSave"/>
-                <MenuFlyoutItem Text="Salva tutto" KeyboardAcceleratorTextOverride="Ctrl+Shift+S" Click="OnMenuSaveAll"/>
-                <MenuFlyoutItem Text="Chiudi tab" KeyboardAcceleratorTextOverride="Ctrl+W" Click="OnMenuCloseTab"/>
+                <MenuFlyoutItem Text="Save" KeyboardAcceleratorTextOverride="Ctrl+S" Click="OnMenuSave"/>
+                <MenuFlyoutItem Text="Save all" KeyboardAcceleratorTextOverride="Ctrl+Shift+S" Click="OnMenuSaveAll"/>
+                <MenuFlyoutItem Text="Close tab" KeyboardAcceleratorTextOverride="Ctrl+W" Click="OnMenuCloseTab"/>
                 <MenuFlyoutSeparator/>
-                <MenuFlyoutItem Text="Cambia Password..." KeyboardAcceleratorTextOverride="Ctrl+P" Click="OnMenuChangePassword"/>
-                <MenuFlyoutItem Text="Codice di recupero..." Click="OnMenuRecoveryCode"/>
+                <MenuFlyoutItem Text="Change Password..." KeyboardAcceleratorTextOverride="Ctrl+P" Click="OnMenuChangePassword"/>
+                <MenuFlyoutItem Text="Recovery code..." Click="OnMenuRecoveryCode"/>
                 <MenuFlyoutSeparator/>
-                <MenuFlyoutItem Text="Esci" Click="OnMenuExit"/>
+                <MenuFlyoutItem Text="Exit" Click="OnMenuExit"/>
             </MenuBarItem>
-            <MenuBarItem Title="Visualizza">
-                <MenuFlyoutItem Text="Aumenta dimensione testo" KeyboardAcceleratorTextOverride="Ctrl++" Click="OnMenuFontSizeUp"/>
-                <MenuFlyoutItem Text="Riduci dimensione testo"  KeyboardAcceleratorTextOverride="Ctrl+-"  Click="OnMenuFontSizeDown"/>
+            <MenuBarItem Title="View">
+                <MenuFlyoutItem Text="Increase text size" KeyboardAcceleratorTextOverride="Ctrl++" Click="OnMenuFontSizeUp"/>
+                <MenuFlyoutItem Text="Decrease text size" KeyboardAcceleratorTextOverride="Ctrl+-"  Click="OnMenuFontSizeDown"/>
             </MenuBarItem>
             <MenuBarItem Title="?">
-                <MenuFlyoutItem Text="Associa .stxt a Lock Notes" Click="OnMenuRegisterAssociation"/>
+                <MenuFlyoutItem Text="Associate .stxt with Lock Notes" Click="OnMenuRegisterAssociation"/>
                 <MenuFlyoutSeparator/>
-                <MenuFlyoutItem Text="Informazioni..." Click="OnMenuAbout"/>
+                <MenuFlyoutItem Text="About..." Click="OnMenuAbout"/>
             </MenuBarItem>
         </MenuBar>
 
